@@ -1,0 +1,116 @@
+#include <opencv2/opencv.hpp>
+#include <opencv2/video/background_segm.hpp>
+#include <iostream>
+#include <vector>
+#include <string>
+#include <ctime>
+
+int main() {
+    const int numCameras = 4;  // Numero massimo di telecamere (configurabile)
+    std::vector<cv::VideoCapture> caps(numCameras);
+    std::vector<cv::Ptr<cv::BackgroundSubtractorMOG2>> subtractors(numCameras);
+    std::vector<cv::VideoWriter> writers(numCameras);
+    std::vector<bool> isRecording(numCameras, false);
+    
+    // Inizializza telecamere e subtractors
+    for (int i = 0; i < numCameras; ++i) {
+        caps[i].open(i);
+        if (!caps[i].isOpened()) {
+            std::cout << "Telecamera " << i << " non disponibile." << std::endl;
+            continue;
+        }
+        subtractors[i] = cv::createBackgroundSubtractorMOG2();
+        std::cout << "Telecamera " << i << " inizializzata." << std::endl;
+    }
+    
+    std::cout << "Controlli: 'q' esci, '0-3' seleziona telecamera, 'z' attiva/disattiva monitoraggio zona." << std::endl;
+    
+    int selectedCam = 0;
+    bool monitorZones = false;
+    
+    while (true) {
+        cv::Mat frame, fgMask, processedFrame;
+        if (!caps[selectedCam].isOpened()) {
+            std::cout << "Telecamera selezionata non disponibile." << std::endl;
+            cv::waitKey(1000);
+            continue;
+        }
+        
+        caps[selectedCam] >> frame;
+        if (frame.empty()) continue;
+        
+        // Rilevamento movimento
+        subtractors[selectedCam]->apply(frame, fgMask);
+        cv::threshold(fgMask, fgMask, 128, 255, cv::THRESH_BINARY);
+        
+        // Calcola movimento totale
+        double movement = cv::countNonZero(fgMask) / (double)(fgMask.rows * fgMask.cols);
+        
+        // Gestione zone (dividi in 4 quadranti)
+        if (monitorZones) {
+            int halfW = frame.cols / 2, halfH = frame.rows / 2;
+            std::vector<cv::Rect> zones = {
+                cv::Rect(0, 0, halfW, halfH),           // Zona 1: alto-sinistra
+                cv::Rect(halfW, 0, halfW, halfH),       // Zona 2: alto-destra
+                cv::Rect(0, halfH, halfW, halfH),       // Zona 3: basso-sinistra
+                cv::Rect(halfW, halfH, halfW, halfH)    // Zona 4: basso-destra
+            };
+            
+            processedFrame = frame.clone();
+            for (int z = 0; z < zones.size(); ++z) {
+                cv::Mat zoneMask = fgMask(zones[z]);
+                double zoneMovement = cv::countNonZero(zoneMask) / (double)(zoneMask.rows * zoneMask.cols);
+                if (zoneMovement > 0.01) {  // Soglia per movimento in zona
+                    cv::rectangle(processedFrame, zones[z], cv::Scalar(0, 0, 255), 2);
+                    std::cout << "Movimento rilevato in zona " << (z+1) << " della telecamera " << selectedCam << std::endl;
+                }
+            }
+        } else {
+            processedFrame = frame.clone();
+        }
+        
+        // Avvia registrazione se movimento > soglia
+        if (movement > 0.02 && !isRecording[selectedCam]) {
+            std::time_t now = std::time(nullptr);
+            std::string filename = "recording_cam" + std::to_string(selectedCam) + "_" + std::to_string(now) + ".avi";
+            writers[selectedCam].open(filename, cv::VideoWriter::fourcc('M','J','P','G'), 30, frame.size());
+            if (writers[selectedCam].isOpened()) {
+                isRecording[selectedCam] = true;
+                std::cout << "Registrazione avviata: " << filename << std::endl;
+            }
+        }
+        
+        // Scrivi frame se in registrazione
+        if (isRecording[selectedCam]) {
+            writers[selectedCam] << frame;
+            // Ferma registrazione dopo 10 secondi (esempio)
+            static int recordCounter = 0;
+            if (++recordCounter > 300) {  // 30 FPS * 10 sec
+                writers[selectedCam].release();
+                isRecording[selectedCam] = false;
+                recordCounter = 0;
+                std::cout << "Registrazione fermata." << std::endl;
+            }
+        }
+        
+        // Mostra frame elaborato
+        cv::imshow("Gestione Telecamere Avanzata - Cam " + std::to_string(selectedCam), processedFrame);
+        
+        // Gestisci input
+        char key = cv::waitKey(30);
+        if (key == 'q') break;
+        else if (key >= '0' && key <= '3') {
+            selectedCam = key - '0';
+            std::cout << "Telecamera selezionata: " << selectedCam << std::endl;
+        } else if (key == 'z') {
+            monitorZones = !monitorZones;
+            std::cout << "Monitoraggio zone: " << (monitorZones ? "attivato" : "disattivato") << std::endl;
+        }
+    }
+    
+    // Rilascia risorse
+    for (auto& cap : caps) cap.release();
+    for (auto& writer : writers) writer.release();
+    cv::destroyAllWindows();
+    return 0;
+}
