@@ -1,0 +1,15 @@
+The program manages up to four cameras using OpenCV. At startup, it attempts to initialize video devices with IDs 0 to 3. After launching, it displays the feed of the selected camera and automatically detects motion using BackgroundSubtractorMOG2.
+
+Recording starts automatically when detected motion exceeds the defined threshold and lasts about ten seconds. Video files are saved in AVI format with a timestamp.
+
+Main controls:
+
+“q” to exit the program
+
+“0” to “3” to select the camera
+
+“z” to enable or disable zone monitoring
+
+Zone monitoring divides the frame into four quadrants and reports if motion is detected in any of them.
+
+When exiting, all resources and windows are properly released.
