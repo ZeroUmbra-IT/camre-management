@@ -1,0 +1,1 @@
+This camera management software is provided only for lawful and educational use. Any improper or illegal use is prohibited. The author is not responsible for damages or violations resulting from misuse: the user is solely responsible for their actions.
